@@ -4,9 +4,12 @@
 
 package frc.robot;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.controller.ProfiledPIDController;
 import edu.wpi.first.math.system.plant.DCMotor;
+import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.Joystick;
@@ -20,6 +23,7 @@ import edu.wpi.first.wpilibj.simulation.SingleJointedArmSim;
 import edu.wpi.first.wpilibj.smartdashboard.Mechanism2d;
 import edu.wpi.first.wpilibj.smartdashboard.MechanismLigament2d;
 import edu.wpi.first.wpilibj.smartdashboard.MechanismRoot2d;
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
 import edu.wpi.first.wpilibj.util.Color8Bit;
@@ -33,7 +37,7 @@ public class Robot extends TimedRobot {
 
   // The P gain for the PID controller that drives this arm.
   private static final double kArmKp = 40.0;
-  private static final double kArmKi = 50.0;
+  private static final double kArmKi = 0.0;
 
 
   // distance per pulse = (angle per revolution) / (pulses per revolution)
@@ -44,7 +48,8 @@ public class Robot extends TimedRobot {
   private final DCMotor m_armGearbox = DCMotor.getVex775Pro(2);
 
   // Standard classes for controlling our arm
-  private final PIDController m_controller = new PIDController(kArmKp, kArmKi, 0);
+  private final ProfiledPIDController m_topController = new ProfiledPIDController(kArmKp, kArmKi, 0, new TrapezoidProfile.Constraints(2, 5));
+  private final ProfiledPIDController m_bottomController = new ProfiledPIDController(kArmKp, kArmKi, 0, new TrapezoidProfile.Constraints(2, 5));
   private final Encoder m_topEncoder = new Encoder(kEncoderAChannel, kEncoderBChannel);
   private final Encoder m_bottomEncoder = new Encoder(kEncoderAChannel+2, kEncoderBChannel+2);
 
@@ -59,6 +64,31 @@ public class Robot extends TimedRobot {
   private static final double m_arm_bottomMass = 4.0; // Kilograms
   private static final double m_arm_bottomLength = Units.inchesToMeters(27);
 
+  private static final int m_arm_top_min_angle = -75; 
+  private static final int m_arm_top_max_angle = 260; 
+  private static final int m_arm_bottom_min_angle = 30; 
+  private static final int m_arm_bottom_max_angle = 150; 
+
+
+  //SETPOINTS FOR PRESETS MODE (Uses Virtual 4 Bar Mode for smooth movement)
+  private static final int stowedBottom = 90;
+  private static final int stowedTop = 260;
+
+  private static final int intakeBottom = 135;
+  private static final int intakeTop = 265;
+
+  private static final int doubleSubstationBottom = 60;
+  private static final int doubleSubstationTop = 185;
+
+  private static final int scoreFloorBottom = 120;
+  private static final int scoreFloorTop = 255;
+
+  private static final int scoreMidBottom = 95;
+  private static final int scoreMidTop = 195;
+
+  private static final int scoreHighBottom = 135;
+  private static final int scoreHighTop = 160;
+
   // This arm sim represents an arm that can travel from -75 degrees (rotated down front)
   // to 255 degrees (rotated down in the back).
   private final SingleJointedArmSim m_arm_topSim =
@@ -67,10 +97,10 @@ public class Robot extends TimedRobot {
           m_armReduction,
           SingleJointedArmSim.estimateMOI(m_arm_topLength, m_arm_topMass),
           m_arm_topLength,
-          Units.degreesToRadians(-75),
-          Units.degreesToRadians(260),
+          Units.degreesToRadians(m_arm_top_min_angle),
+          Units.degreesToRadians(m_arm_top_max_angle),
           m_arm_topMass,
-          true,
+          false,
           VecBuilder.fill(kArmEncoderDistPerPulse) // Add noise with a std-dev of 1 tick
           );
   private final SingleJointedArmSim m_arm_bottomSim =
@@ -79,21 +109,30 @@ public class Robot extends TimedRobot {
               m_armReduction,
               SingleJointedArmSim.estimateMOI(m_arm_bottomLength, m_arm_bottomMass),
               m_arm_bottomLength,
-              Units.degreesToRadians(30),
-              Units.degreesToRadians(150),
+              Units.degreesToRadians(m_arm_bottom_min_angle),
+              Units.degreesToRadians(m_arm_bottom_max_angle),
               m_arm_bottomMass,
               true,
               VecBuilder.fill(kArmEncoderDistPerPulse) // Add noise with a std-dev of 1 tick
               );
   private final EncoderSim m_topEncoderSim = new EncoderSim(m_topEncoder);
   private final EncoderSim m_bottomEncoderSim = new EncoderSim(m_bottomEncoder);
+  SendableChooser<Integer> controlMode = new SendableChooser<Integer>();
+  SendableChooser<Integer> presetChooser = new SendableChooser<Integer>();
 
 
   // Create a Mechanism2d display of an Arm with a fixed ArmTower and moving Arm.
-  // private final MechanismRoot2d fieldElements = m_mech2d.getRoot()
-
+  
   private final Mechanism2d m_mech2d = new Mechanism2d(90, 90);
-  private final MechanismRoot2d m_armPivot = m_mech2d.getRoot("ArmPivot", 45, 21.75);
+  private final MechanismRoot2d midNodeHome = m_mech2d.getRoot("Mid Node", 27.83, 0);
+  private final MechanismLigament2d MidNode = midNodeHome.append(new MechanismLigament2d("Mid Cone Node", 34, 90, 10, new Color8Bit(Color.kWhite)));
+  private final MechanismRoot2d highNodeHome = m_mech2d.getRoot("High Node", 10.58, 0);
+  private final MechanismLigament2d HighNode = highNodeHome.append(new MechanismLigament2d("High Cone Node", 46, 90, 10, new Color8Bit(Color.kWhite)));
+  private final MechanismRoot2d gridHome = m_mech2d.getRoot("Grid Home", 49.75, 0);
+  private final MechanismLigament2d GridNode = gridHome.append(new MechanismLigament2d("Grid Wall", 49.75, 180, 50, new Color8Bit(Color.kWhite)));
+  private final MechanismRoot2d dsHome = m_mech2d.getRoot("Double Substation Home", 49.75, 37);
+  private final MechanismLigament2d DSRamp = dsHome.append(new MechanismLigament2d("Double Substation Ramp", 13.75, 180, 10, new Color8Bit(Color.kWhite)));
+  private final MechanismRoot2d m_armPivot = m_mech2d.getRoot("ArmPivot", 65, 21.75);
   private final MechanismLigament2d m_arm_bottom =
       m_armPivot.append(
             new MechanismLigament2d(
@@ -108,7 +147,7 @@ public class Robot extends TimedRobot {
   private final MechanismLigament2d m_aframe_1 =
       m_armPivot.append(new MechanismLigament2d("aframe1", 24, -50, 10, new Color8Bit(Color.kSilver)));
   private final MechanismLigament2d m_bumper =
-      m_arm_tower.append(new MechanismLigament2d("Bumper", 4.75, 0, 300, new Color8Bit(Color.kRed)));
+      gridHome.append(new MechanismLigament2d("Bumper", 30.5, 0, 60, new Color8Bit(Color.kRed)));
   private final MechanismLigament2d m_arm_top =
       m_arm_bottom.append(
           new MechanismLigament2d(
@@ -131,8 +170,20 @@ public class Robot extends TimedRobot {
   public void robotInit() {
     m_topEncoder.setDistancePerPulse(kArmEncoderDistPerPulse);
     m_bottomEncoder.setDistancePerPulse(kArmEncoderDistPerPulse);
-    SmartDashboard.putNumber("Setpoint top (degrees)", 180);
-    SmartDashboard.putNumber("Setpoint bottom (degrees)", 0);
+    SmartDashboard.putNumber("Setpoint top (degrees)", 90);
+    SmartDashboard.putNumber("Setpoint bottom (degrees)", 90);
+    controlMode.setDefaultOption("Presets (Setpoints)", 0);
+    controlMode.addOption("Virtual Four Bar", 1);
+    controlMode.addOption("Manual Angle Adjust", 2);
+
+    presetChooser.setDefaultOption("Starting Position", 0);
+    presetChooser.addOption("Floor Intake Position", 1);
+    presetChooser.addOption("Double Substation Intake", 2);
+    presetChooser.addOption("Floor Node Score", 3);
+    presetChooser.addOption("Mid Node Score", 4);
+    presetChooser.addOption("High Node Score", 5);
+    SmartDashboard.putData(controlMode);
+    SmartDashboard.putData(presetChooser);
     // Put Mechanism 2d to SmartDashboard
     SmartDashboard.putData("Arm Sim", m_mech2d);
   }
@@ -163,12 +214,64 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopPeriodic() {
 
-      // Here, we run PID control like normal, with a constant setpoint of 75 degrees.
-      var pidOutput = m_controller.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(SmartDashboard.getNumber("Setpoint top (degrees)", 180) - Units.radiansToDegrees(m_arm_bottomSim.getAngleRads())));
-      m_topMotor.setVoltage(pidOutput);
+    switch(controlMode.getSelected()){
+      case 1:
+        // Here, we run PID control where the top arm acts like a four-bar relative to the bottom. 
+        double pidOutputTop = m_topController.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint top (degrees)", 0) - MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 150), m_arm_bottom_min_angle, m_arm_bottom_max_angle), m_arm_top_min_angle, m_arm_top_max_angle)));
+        m_topMotor.setVoltage(pidOutputTop);
+  
+        double pidOutputBottom = m_bottomController.calculate(m_bottomEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0), m_arm_bottom_min_angle, m_arm_bottom_max_angle)));
+        m_bottomMotor.setVoltage(pidOutputBottom);
+        break;
+      case 2:
+        pidOutputTop = m_topController.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint top (degrees)", 0), m_arm_top_min_angle, m_arm_top_max_angle)));
+        m_topMotor.setVoltage(pidOutputTop);
 
-      var pidOutputBottom = m_controller.calculate(m_bottomEncoder.getDistance(), Units.degreesToRadians(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0)));
-      m_bottomMotor.setVoltage(pidOutputBottom);
+        pidOutputBottom = m_bottomController.calculate(m_bottomEncoder.getDistance(), Units.degreesToRadians(MathUtil.clamp(SmartDashboard.getNumber("Setpoint bottom (degrees)", 0), m_arm_bottom_min_angle, m_arm_bottom_max_angle)));
+        m_bottomMotor.setVoltage(pidOutputBottom);
+        break;
+      default: //also case 0
+        int topSetpoint, bottomSetpoint;
+        switch(presetChooser.getSelected()){
+          case 0:
+            topSetpoint = stowedTop;
+            bottomSetpoint = stowedBottom;
+            break;
+          case 1:
+            topSetpoint = intakeTop;
+            bottomSetpoint = intakeBottom;
+            break;
+          case 2:
+            topSetpoint = doubleSubstationTop;
+            bottomSetpoint = doubleSubstationBottom;
+            break;
+          case 3:
+            topSetpoint = scoreFloorTop;
+            bottomSetpoint = scoreFloorBottom;
+            break;
+          case 4:
+            topSetpoint = scoreMidTop;
+            bottomSetpoint = scoreMidBottom;
+            break;
+          case 5:
+            topSetpoint = scoreHighTop;
+            bottomSetpoint = scoreHighBottom;
+            break;
+          default:
+            topSetpoint = stowedTop;
+            bottomSetpoint = stowedBottom;
+            break;
+        }
+        // Here, we run PID control where the arm moves to the selected setpoint.
+        pidOutputTop = m_topController.calculate(m_topEncoder.getDistance(), Units.degreesToRadians(topSetpoint - bottomSetpoint));
+        m_topMotor.setVoltage(pidOutputTop);
+        SmartDashboard.putNumber("Setpoint bottom (degrees)", bottomSetpoint);
+        SmartDashboard.putNumber("Setpoint top (degrees)", topSetpoint);
+        pidOutputBottom = m_bottomController.calculate(m_bottomEncoder.getDistance(), Units.degreesToRadians(bottomSetpoint));
+        m_bottomMotor.setVoltage(pidOutputBottom);
+        break;
+    }
+
   
   }
 
