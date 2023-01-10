@@ -1,6 +1,6 @@
 # Double Jointed Arm Simulation 
 
-![simgif](https://i.imgur.com/gKczNms.gif)
+https://user-images.githubusercontent.com/9936886/211438802-678e9e9b-127a-47a0-a135-8571471ca96b.mov
 
 This simulation is based on the WPILib `ArmSimulation` example which is an implementation of `SingleJointedArmSim`. We on 3467 are using this to help demystify some of the control challenges associated with this type of robot:
 
