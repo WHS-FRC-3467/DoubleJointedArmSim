@@ -1,9 +1,10 @@
 # Double Jointed Arm Simulation 
 
+![simgif](https://i.imgur.com/gKczNms.gif)
+
 This simulation is based on the WPILib `ArmSimulation` example which is an implementation of `SingleJointedArmSim`. We on 3467 are using this to help demystify some of the control challenges associated with this type of robot:
 
 ![deejay](https://user-images.githubusercontent.com/9936886/211380692-2416ee17-1843-44f0-b0cc-2aecce3ddb5e.jpeg)
 
 To run, start the simulation mode, open Glass, and once the robot is enabled, update the SmartDashboard setpoints for bottom and top arm angle to see how the arm responds. 
 
-![ezgif-5-b300c2ba1f](https://user-images.githubusercontent.com/9936886/211385126-e8c9ee95-337b-4f73-a982-efeb2909d33c.gif)
