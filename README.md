@@ -8,3 +8,9 @@ This simulation is based on the WPILib `ArmSimulation` example which is an imple
 
 To run, start the simulation mode, open Glass, and once the robot is enabled, update the SmartDashboard setpoints for bottom and top arm angle to see how the arm responds. 
 
+## Motorized wrist (triple jointed arm) support - beta
+
+Beta for wrist support is available for testing on the `double-with-wrist` branch.
+
+https://user-images.githubusercontent.com/9936886/212361150-c54918f1-0acd-40f5-9f85-b3ac4db83c65.mov
+
